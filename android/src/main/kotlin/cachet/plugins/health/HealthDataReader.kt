@@ -33,6 +33,7 @@ class HealthDataReader(
     private val dataConverter: HealthDataConverter
 ) {
     private val recordingFilter = HealthRecordingFilter()
+    private val permissionChecker = HealthPermissionChecker(context)
 
     /**
      * Retrieves all health data points of a specified type within a given time range.
@@ -595,36 +596,52 @@ class HealthDataReader(
         for (rec in filteredRecords) {
             val record = rec as ExerciseSessionRecord
             
-            // Get distance data
-            val distanceRequest = healthConnectClient.readRecords(
-                ReadRecordsRequest(
-                    recordType = DistanceRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(
-                        record.startTime,
-                        record.endTime,
-                    ),
-                ),
-            )
+          
             var totalDistance = 0.0
-            for (distanceRec in distanceRequest.records) {
-                totalDistance += distanceRec.distance.inMeters
+            if (permissionChecker.isLocationPermissionGranted() && permissionChecker.isHealthDistancePermissionGranted()) {
+                // Get distance data
+                val distanceRequest = healthConnectClient.readRecords(
+                    ReadRecordsRequest(
+                        recordType = DistanceRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(
+                            record.startTime,
+                            record.endTime,
+                        ),
+                    ),
+                )
+                for (distanceRec in distanceRequest.records) {
+                    totalDistance += distanceRec.distance.inMeters
+                }
+            }
+            else {
+                Log.i(
+                    "FLUTTER_HEALTH",
+                    "Skipping distance data retrieval for workout due to missing permissions (location or health distance)"
+                )
             }
 
             // Get energy burned data
-            val energyBurnedRequest = healthConnectClient.readRecords(
-                ReadRecordsRequest(
-                    recordType = TotalCaloriesBurnedRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(
-                        record.startTime,
-                        record.endTime,
-                    ),
-                ),
-            )
             var totalEnergyBurned = 0.0
-            for (energyBurnedRec in energyBurnedRequest.records) {
-                totalEnergyBurned += energyBurnedRec.energy.inKilocalories
+            if (permissionChecker.isHealthTotalCaloriesBurnedPermissionGranted()) {
+                val energyBurnedRequest = healthConnectClient.readRecords(
+                    ReadRecordsRequest(
+                        recordType = TotalCaloriesBurnedRecord::class,
+                        timeRangeFilter = TimeRangeFilter.between(
+                            record.startTime,
+                            record.endTime,
+                        ),
+                    ),
+                )
+                for (energyBurnedRec in energyBurnedRequest.records) {
+                    totalEnergyBurned += energyBurnedRec.energy.inKilocalories
+                }
+            } else {
+                Log.i(
+                    "FLUTTER_HEALTH",
+                    "Skipping total calories burned data retrieval for workout due to missing permissions"
+                )
             }
-
+            
             // Get steps data
             val stepRequest = healthConnectClient.readRecords(
                 ReadRecordsRequest(
